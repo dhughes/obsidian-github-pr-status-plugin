@@ -1,0 +1,61 @@
+.gh-pr-status-badge {
+	font-size: 0.85em;
+	white-space: nowrap;
+	margin-left: 4px;
+}
+
+.gh-pr-loading {
+	color: var(--text-muted);
+}
+
+/* PR state */
+.gh-pr-merged {
+	color: #a371f7;
+}
+
+.gh-pr-closed {
+	color: #f85149;
+}
+
+/* Review status */
+.gh-pr-review-draft {
+	color: var(--text-muted);
+}
+
+.gh-pr-review-no_reviews {
+	color: #d29922;
+}
+
+.gh-pr-review-commented {
+	color: #58a6ff;
+}
+
+.gh-pr-review-approved {
+	color: #3fb950;
+}
+
+.gh-pr-review-changes_requested {
+	color: #f85149;
+}
+
+.gh-pr-review-unknown {
+	color: var(--text-muted);
+}
+
+/* Checks status */
+.gh-pr-checks-pending {
+	color: #d29922;
+}
+
+.gh-pr-checks-success {
+	color: #3fb950;
+}
+
+.gh-pr-checks-failure {
+	color: #f85149;
+}
+
+/* Conflict */
+.gh-pr-conflict {
+	color: #f85149;
+}

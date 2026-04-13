@@ -1,0 +1,23 @@
+{
+	"name": "obsidian-github-pr-status-plugin",
+	"version": "1.0.0",
+	"description": "Obsidian plugin that shows GitHub PR status inline",
+	"type": "module",
+	"main": "main.js",
+	"scripts": {
+		"dev": "node esbuild.config.mjs",
+		"build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production"
+	},
+	"keywords": [],
+	"author": "Doug Hughes",
+	"license": "MIT",
+	"devDependencies": {
+		"@types/node": "^22.0.0",
+		"esbuild": "^0.25.0",
+		"obsidian": "latest",
+		"tslib": "2.4.0",
+		"typescript": "^5.8.0",
+		"@codemirror/state": "^6.0.0",
+		"@codemirror/view": "^6.0.0"
+	}
+}
