@@ -25,18 +25,18 @@ const PR_URL_REGEX =
 const prStatusUpdateEffect = StateEffect.define<null>();
 
 const REVIEW_LABELS: Record<ReviewStatus, string> = {
-	draft: "✎ draft",
-	no_reviews: "◷ no reviews",
-	commented: "💬 commented",
-	approved: "✓ approved",
-	changes_requested: "✗ changes requested",
+	draft: "⌨ draft",
+	no_reviews: "⧖ no reviews",
+	commented: "@ commented",
+	approved: "☑ approved",
+	changes_requested: "⌧ changes requested",
 	unknown: "? unknown",
 };
 
 const CHECKS_LABELS: Record<Exclude<ChecksStatus, "unknown">, string> = {
 	pending: "● pending",
 	success: "● passing",
-	failure: "✗ failing",
+	failure: "⌧ failing",
 };
 
 export default class GithubPRStatusPlugin extends Plugin {
@@ -44,6 +44,7 @@ export default class GithubPRStatusPlugin extends Plugin {
 	statusCache = new Map<string, PRStatus>();
 	private pollIntervalId: number | null = null;
 	private pendingFetches = new Set<string>();
+	private failedKeys = new Set<string>();
 
 	async onload() {
 		await this.loadSettings();
@@ -122,7 +123,9 @@ export default class GithubPRStatusPlugin extends Plugin {
 			this.statusCache.set(key, status);
 			this.refreshAllDecorations();
 		} catch (e) {
-			console.error(`[gh-pr-status] failed to fetch ${key}:`, e);
+			console.warn(`[gh-pr-status] failed to fetch ${key} (is gh installed and authenticated?):`, e);
+			this.failedKeys.add(key);
+			this.refreshAllDecorations();
 		} finally {
 			this.pendingFetches.delete(key);
 		}
@@ -182,6 +185,9 @@ export default class GithubPRStatusPlugin extends Plugin {
 	) {
 		const anchors = el.querySelectorAll("a");
 		anchors.forEach((anchor) => {
+			// Skip links inside code/pre elements
+			if (this.isInsideCodeElement(anchor)) return;
+
 			const href = anchor.getAttribute("href") || "";
 			PR_URL_REGEX.lastIndex = 0;
 			const match = PR_URL_REGEX.exec(href);
@@ -191,6 +197,16 @@ export default class GithubPRStatusPlugin extends Plugin {
 			const repo = match[2];
 			const number = parseInt(match[3], 10);
 			const key = this.prKey(owner, repo, number);
+
+			// Don't decorate if gh failed for this PR
+			if (this.failedKeys.has(key)) return;
+
+			// Collapse raw URL text to "repo #number"
+			const anchorText = anchor.textContent || "";
+			PR_URL_REGEX.lastIndex = 0;
+			if (PR_URL_REGEX.test(anchorText)) {
+				anchor.textContent = `${repo} #${number}`;
+			}
 
 			const badge = document.createElement("span");
 			badge.className = "gh-pr-status-badge";
@@ -203,12 +219,26 @@ export default class GithubPRStatusPlugin extends Plugin {
 		});
 	}
 
+	private isInsideCodeElement(node: Node): boolean {
+		let parent = node.parentElement;
+		while (parent) {
+			const tag = parent.tagName.toLowerCase();
+			if (tag === "code" || tag === "pre") return true;
+			parent = parent.parentElement;
+		}
+		return false;
+	}
+
 	private updateReadingViewBadges() {
 		const badges =
 			document.querySelectorAll<HTMLElement>(".gh-pr-status-badge");
 		badges.forEach((badge) => {
 			const key = badge.dataset.prKey;
 			if (!key) return;
+			if (this.failedKeys.has(key)) {
+				badge.remove();
+				return;
+			}
 			const status = this.statusCache.get(key) ?? null;
 			this.renderBadge(badge, status);
 		});
@@ -228,12 +258,12 @@ export default class GithubPRStatusPlugin extends Plugin {
 		badge.className = "gh-pr-status-badge";
 
 		if (status.state === "merged") {
-			this.appendSpan(badge, "gh-pr-merged", "⊕ merged");
+			this.appendSpan(badge, "gh-pr-merged", "⌥ merged");
 			return;
 		}
 
 		if (status.state === "closed") {
-			this.appendSpan(badge, "gh-pr-closed", "⊗ closed");
+			this.appendSpan(badge, "gh-pr-closed", "⌧ closed");
 			return;
 		}
 
@@ -355,6 +385,15 @@ export default class GithubPRStatusPlugin extends Plugin {
 						key: string;
 					}[] = [];
 
+					// Build fenced code block ranges for the document
+					const codeBlockRanges =
+						this.getFencedCodeRanges(view);
+
+					const isInCodeBlock = (pos: number): boolean =>
+						codeBlockRanges.some(
+							([s, e]) => pos >= s && pos <= e
+						);
+
 					for (const { from, to } of view.visibleRanges) {
 						const text = view.state.doc.sliceString(
 							from,
@@ -378,6 +417,12 @@ export default class GithubPRStatusPlugin extends Plugin {
 							)
 								continue;
 
+							const matchStart =
+								from + mdMatch.index;
+
+							// Skip if inside a fenced code block
+							if (isInCodeBlock(matchStart)) continue;
+
 							const owner = mdMatch[2];
 							const repo = mdMatch[3];
 							const num = parseInt(mdMatch[4], 10);
@@ -386,6 +431,10 @@ export default class GithubPRStatusPlugin extends Plugin {
 								repo,
 								num
 							);
+
+							// Skip if gh failed for this PR
+							if (plugin.failedKeys.has(key))
+								continue;
 
 							plugin.getStatus(owner, repo, num);
 
@@ -433,6 +482,9 @@ export default class GithubPRStatusPlugin extends Plugin {
 							);
 							if (isClaimed) continue;
 
+							// Skip if inside a fenced code block
+							if (isInCodeBlock(matchStart)) continue;
+
 							// Skip if inside inline code backticks
 							const line =
 								view.state.doc.lineAt(matchStart);
@@ -454,6 +506,10 @@ export default class GithubPRStatusPlugin extends Plugin {
 								repo,
 								num
 							);
+
+							// Skip if gh failed for this PR
+							if (plugin.failedKeys.has(key))
+								continue;
 
 							plugin.getStatus(owner, repo, num);
 
@@ -500,6 +556,35 @@ export default class GithubPRStatusPlugin extends Plugin {
 						if (lineText[i] === "`") inCode = !inCode;
 					}
 					return inCode;
+				}
+
+				getFencedCodeRanges(
+					view: EditorView
+				): [number, number][] {
+					const ranges: [number, number][] = [];
+					const doc = view.state.doc;
+					let inFence = false;
+					let fenceStart = 0;
+
+					for (let i = 1; i <= doc.lines; i++) {
+						const line = doc.line(i);
+						if (/^(`{3,}|~{3,})/.test(line.text)) {
+							if (inFence) {
+								ranges.push([
+									fenceStart,
+									line.to,
+								]);
+								inFence = false;
+							} else {
+								fenceStart = line.from;
+								inFence = true;
+							}
+						}
+					}
+					if (inFence) {
+						ranges.push([fenceStart, doc.length]);
+					}
+					return ranges;
 				}
 			},
 			{
