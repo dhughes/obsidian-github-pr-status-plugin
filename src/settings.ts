@@ -6,7 +6,7 @@ export interface GithubPRStatusSettings {
 }
 
 export const DEFAULT_SETTINGS: GithubPRStatusSettings = {
-	pollIntervalSeconds: 30,
+	pollIntervalSeconds: 60,
 };
 
 export class GithubPRStatusSettingTab extends PluginSettingTab {
@@ -24,7 +24,7 @@ export class GithubPRStatusSettingTab extends PluginSettingTab {
 		new Setting(containerEl)
 			.setName("Poll interval (seconds)")
 			.setDesc(
-				"How often to re-check status for open PRs. Minimum 10 seconds."
+				"How often to re-check status for open PRs. Minimum 60 seconds."
 			)
 			.addText((text) =>
 				text
@@ -32,7 +32,7 @@ export class GithubPRStatusSettingTab extends PluginSettingTab {
 					.setValue(String(this.plugin.settings.pollIntervalSeconds))
 					.onChange(async (value) => {
 						const num = parseInt(value, 10);
-						if (!isNaN(num) && num >= 10) {
+						if (!isNaN(num) && num >= 60) {
 							this.plugin.settings.pollIntervalSeconds = num;
 							await this.plugin.saveSettings();
 							this.plugin.restartPolling();

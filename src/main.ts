@@ -70,6 +70,9 @@ export default class GithubPRStatusPlugin extends Plugin {
 			DEFAULT_SETTINGS,
 			await this.loadData()
 		);
+		if (this.settings.pollIntervalSeconds < 60) {
+			this.settings.pollIntervalSeconds = 60;
+		}
 	}
 
 	async saveSettings() {
@@ -143,6 +146,15 @@ export default class GithubPRStatusPlugin extends Plugin {
 
 	restartPolling() {
 		this.startPolling();
+	}
+
+	refreshPR(key: string) {
+		const parsed = this.parsePrKey(key);
+		if (!parsed) return;
+		this.failedKeys.delete(key);
+		this.statusCache.delete(key);
+		this.refreshAllDecorations();
+		this.triggerFetch(parsed.owner, parsed.repo, parsed.number);
 	}
 
 	private async pollAllPRs() {
@@ -259,11 +271,13 @@ export default class GithubPRStatusPlugin extends Plugin {
 
 		if (status.state === "merged") {
 			this.appendSpan(badge, "gh-pr-merged", "⌥ merged");
+			this.appendRefreshButton(badge);
 			return;
 		}
 
 		if (status.state === "closed") {
 			this.appendSpan(badge, "gh-pr-closed", "⌧ closed");
+			this.appendRefreshButton(badge);
 			return;
 		}
 
@@ -301,6 +315,8 @@ export default class GithubPRStatusPlugin extends Plugin {
 			}
 			badge.appendChild(part);
 		});
+
+		this.appendRefreshButton(badge);
 	}
 
 	private createSpan(className: string, text: string): HTMLSpanElement {
@@ -317,6 +333,20 @@ export default class GithubPRStatusPlugin extends Plugin {
 	) {
 		parent.appendChild(document.createTextNode(" "));
 		parent.appendChild(this.createSpan(className, text));
+	}
+
+	private appendRefreshButton(badge: HTMLElement) {
+		const btn = document.createElement("span");
+		btn.className = "gh-pr-refresh";
+		btn.textContent = "↻";
+		btn.setAttribute("aria-label", "Refresh PR status");
+		btn.addEventListener("click", (e) => {
+			e.preventDefault();
+			e.stopPropagation();
+			const key = badge.dataset.prKey;
+			if (key) this.refreshPR(key);
+		});
+		badge.appendChild(btn);
 	}
 
 	// ── Edit View (CodeMirror 6) ─────────────────────────────────
@@ -353,6 +383,7 @@ export default class GithubPRStatusPlugin extends Plugin {
 					this.statusHash === other.statusHash
 				);
 			}
+
 		}
 
 		return ViewPlugin.fromClass(

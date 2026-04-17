@@ -59,3 +59,17 @@
 .gh-pr-conflict {
 	color: #f85149;
 }
+
+/* Refresh button */
+.gh-pr-refresh {
+	cursor: pointer;
+	color: var(--text-muted);
+	margin-left: 4px;
+	opacity: 0.5;
+	transition: opacity 0.15s;
+}
+
+.gh-pr-refresh:hover {
+	opacity: 1;
+	color: var(--text-normal);
+}
