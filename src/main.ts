@@ -13,7 +13,7 @@ import {
 	DEFAULT_SETTINGS,
 	GithubPRStatusSettingTab,
 } from "./settings";
-import { fetchPRStatus } from "./gh";
+import { fetchPRStatus } from "./api";
 import type { PRStatus, ReviewStatus, ChecksStatus } from "./types";
 
 // Matches GitHub PR URLs, captures owner, repo, and PR number.
@@ -122,11 +122,14 @@ export default class GithubPRStatusPlugin extends Plugin {
 		this.pendingFetches.add(key);
 
 		try {
-			const status = await fetchPRStatus({ owner, repo, number });
+			const status = await fetchPRStatus(
+				{ accessToken: this.settings.accessToken },
+				{ owner, repo, number }
+			);
 			this.statusCache.set(key, status);
 			this.refreshAllDecorations();
 		} catch (e) {
-			console.warn(`[gh-pr-status] failed to fetch ${key} (is gh installed and authenticated?):`, e);
+			console.warn(`[gh-pr-status] failed to fetch ${key}:`, e);
 			this.failedKeys.add(key);
 			this.refreshAllDecorations();
 		} finally {
