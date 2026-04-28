@@ -2,28 +2,29 @@
 
 An [Obsidian](https://obsidian.md) plugin that detects GitHub pull request URLs in your notes and displays live status badges inline — showing review state, CI checks, merge conflicts, and whether the PR is open, merged, or closed.
 
+Works with **GitHub.com only**. Authenticates with a personal access token, so the plugin runs on desktop and mobile (no CLI dependency).
+
 ## Features
 
 - **Inline status badges** — PR status appears right next to the link, in both editing and reading views
 - **Review status** — draft, awaiting review, commented, approved, or changes requested
-- **CI checks** — pending, passing, or failing
+- **CI checks** — pending, passing, or failing (computed from GitHub's `statusCheckRollup`, the same value `gh pr checks` reports)
 - **Merge conflicts** — warns when a PR has conflicts
 - **Terminal states** — merged and closed PRs are clearly labeled
 - **URL collapsing** — bare PR URLs in reading view are shortened to `repo #123`
-- **Auto-polling** — open PRs are re-checked on a configurable interval (default 30s)
+- **Auto-polling** — open PRs are re-checked on a configurable interval (default 60s, minimum 60s)
 - **Code block aware** — skips PR URLs inside fenced code blocks and inline code
 
 ## Prerequisites
 
-This plugin requires the [GitHub CLI (`gh`)](https://cli.github.com/) to be installed and authenticated on your machine.
+A **classic GitHub personal access token** with the `repo` scope (or `public_repo` if you only reference public repositories).
 
-```bash
-# Install (macOS)
-brew install gh
+1. Visit https://github.com/settings/tokens
+2. Click **Generate new token (classic)**
+3. Give it a name, set an expiration, and check the `repo` scope (or `public_repo`)
+4. Copy the token — you'll paste it into the plugin's settings
 
-# Authenticate
-gh auth login
-```
+> **Security note:** the token is stored unencrypted in `<your-vault>/.obsidian/plugins/github-pr-status/data.json`.
 
 ## Installation
 
@@ -44,6 +45,12 @@ npm run build
 ```
 
 Then copy `main.js`, `manifest.json`, and `styles.css` into your vault's plugin folder as described above.
+
+## Configuration
+
+1. Open **Settings → Community plugins → GitHub PR Status**
+2. Paste your personal access token
+3. Click **Test** to verify — you should see `✓ Connected as <your-username>`
 
 ## Usage
 
@@ -78,7 +85,8 @@ The plugin will automatically fetch and display the PR's status inline. Markdown
 
 | Setting | Default | Description |
 |---|---|---|
-| Poll interval | 30s | How often to re-check open PRs (minimum 10s) |
+| Personal access token | _(empty)_ | Classic GitHub PAT with `repo` or `public_repo` scope |
+| Poll interval | 60s | How often to re-check open PRs (minimum 60s) |
 
 ## License
 
