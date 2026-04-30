@@ -40,6 +40,11 @@ interface GraphQLResponse<T> {
 	errors?: { type?: string; message: string }[];
 }
 
+interface ReviewNode {
+	state: string;
+	commit: { oid: string } | null;
+}
+
 interface PullRequestData {
 	repository: {
 		pullRequest: {
@@ -48,7 +53,8 @@ interface PullRequestData {
 			state: "OPEN" | "CLOSED" | "MERGED";
 			mergedAt: string | null;
 			mergeable: "MERGEABLE" | "CONFLICTING" | "UNKNOWN";
-			reviews: { nodes: { state: string }[] };
+			headRefOid: string;
+			latestReviews: { nodes: ReviewNode[] };
 			commits: {
 				nodes: {
 					commit: {
@@ -72,7 +78,13 @@ const PR_QUERY = `query($owner: String!, $repo: String!, $num: Int!) {
       state
       mergedAt
       mergeable
-      reviews(last: 100) { nodes { state } }
+      headRefOid
+      latestReviews(first: 100) {
+        nodes {
+          state
+          commit { oid }
+        }
+      }
       commits(last: 1) {
         nodes { commit { statusCheckRollup { state } } }
       }
@@ -225,7 +237,8 @@ export async function fetchPRStatus(
 
 	const reviewStatus = determineReviewStatus(
 		prData.isDraft,
-		prData.reviews.nodes
+		prData.headRefOid,
+		prData.latestReviews.nodes
 	);
 
 	let checksStatus: ChecksStatus = "unknown";
@@ -249,20 +262,30 @@ export async function fetchPRStatus(
 
 function determineReviewStatus(
 	isDraft: boolean,
-	reviews: { state: string }[]
+	headOid: string,
+	reviews: ReviewNode[]
 ): ReviewStatus {
 	if (isDraft) return "draft";
 	if (reviews.length === 0) return "no_reviews";
 
+	// CHANGES_REQUESTED propagates regardless of which commit it was for —
+	// matches GitHub's UI where that signal sticks until the reviewer
+	// dismisses or re-reviews.
 	for (const r of reviews) {
 		if (r.state === "CHANGES_REQUESTED") return "changes_requested";
 	}
+
+	// APPROVED is only valid when the approval was for the current head commit.
+	// Stale approvals (where new commits have landed since) are ignored, which
+	// flows through to "no_reviews" — i.e. the PR needs another look.
 	for (const r of reviews) {
-		if (r.state === "APPROVED") return "approved";
+		if (r.state === "APPROVED" && r.commit?.oid === headOid) return "approved";
 	}
+
 	for (const r of reviews) {
 		if (r.state === "COMMENTED") return "commented";
 	}
+
 	return "no_reviews";
 }
 
