@@ -389,6 +389,36 @@ export default class GithubPRStatusPlugin extends Plugin {
 
 		}
 
+		// Shortened replacement for a bare PR URL in live preview.
+		// Renders as a clickable anchor showing "repo #number".
+		class BareURLWidget extends WidgetType {
+			constructor(
+				private readonly repo: string,
+				private readonly num: number,
+				private readonly url: string
+			) {
+				super();
+			}
+
+			toDOM(): HTMLElement {
+				const a = document.createElement("a");
+				a.className = "external-link gh-pr-shortened";
+				a.href = this.url;
+				a.textContent = `${this.repo} #${this.num}`;
+				a.setAttr("target", "_blank");
+				a.setAttr("rel", "noopener noreferrer");
+				return a;
+			}
+
+			eq(other: BareURLWidget): boolean {
+				return (
+					this.repo === other.repo &&
+					this.num === other.num &&
+					this.url === other.url
+				);
+			}
+		}
+
 		return ViewPlugin.fromClass(
 			class {
 				decorations: DecorationSet;
@@ -401,6 +431,7 @@ export default class GithubPRStatusPlugin extends Plugin {
 					if (
 						update.docChanged ||
 						update.viewportChanged ||
+						update.selectionSet ||
 						update.transactions.some((tr) =>
 							tr.effects.some((e) =>
 								e.is(prStatusUpdateEffect)
@@ -414,10 +445,20 @@ export default class GithubPRStatusPlugin extends Plugin {
 				}
 
 				buildDecorations(view: EditorView): DecorationSet {
-					const entries: {
+					type WidgetEntry = {
+						kind: "widget";
 						pos: number;
 						key: string;
-					}[] = [];
+					};
+					type ReplaceEntry = {
+						kind: "replace";
+						from: number;
+						to: number;
+						repo: string;
+						num: number;
+						url: string;
+					};
+					const entries: (WidgetEntry | ReplaceEntry)[] = [];
 
 					// Build fenced code block ranges for the document
 					const codeBlockRanges =
@@ -477,7 +518,7 @@ export default class GithubPRStatusPlugin extends Plugin {
 								from +
 								mdMatch.index +
 								mdMatch[0].length;
-							entries.push({ pos: endPos, key });
+							entries.push({ kind: "widget", pos: endPos, key });
 
 							// Claim the URL range so pass 2 skips it
 							const urlStart =
@@ -547,31 +588,67 @@ export default class GithubPRStatusPlugin extends Plugin {
 
 							plugin.getStatus(owner, repo, num);
 
-							entries.push({ pos: matchEnd, key });
+							// Shorten the URL text to "repo #num", but only when
+							// no cursor or selection overlaps the URL — otherwise
+							// reveal the source so the user can edit it.
+							const cursorInRange = view.state.selection.ranges.some(
+								(r) => !(r.to < matchStart || r.from > matchEnd)
+							);
+							if (!cursorInRange) {
+								entries.push({
+									kind: "replace",
+									from: matchStart,
+									to: matchEnd,
+									repo,
+									num,
+									url: bareMatch[0],
+								});
+							}
+
+							entries.push({ kind: "widget", pos: matchEnd, key });
 						}
 					}
 
-					// Sort by position (required by RangeSetBuilder)
-					entries.sort((a, b) => a.pos - b.pos);
+					// Sort by start position. Replaces sort by `from`, widgets by `pos`.
+					// When a replace and widget share the same position, the replace
+					// must come first (RangeSetBuilder requires non-decreasing `from`,
+					// and a replace's `to` extends past `from`).
+					entries.sort((a, b) => {
+						const aPos = a.kind === "replace" ? a.from : a.pos;
+						const bPos = b.kind === "replace" ? b.from : b.pos;
+						if (aPos !== bPos) return aPos - bPos;
+						// Replace before widget at same position.
+						return a.kind === "replace" ? -1 : 1;
+					});
 
-					// Build decorations, deduplicating by position
-					const builder =
-						new RangeSetBuilder<Decoration>();
-					const seen = new Set<number>();
+					const builder = new RangeSetBuilder<Decoration>();
+					const seenWidgetPos = new Set<number>();
 
 					for (const entry of entries) {
-						if (seen.has(entry.pos)) continue;
-						seen.add(entry.pos);
-						builder.add(
-							entry.pos,
-							entry.pos,
-							Decoration.widget({
-								widget: new PRStatusWidget(
-									entry.key
-								),
-								side: 1,
-							})
-						);
+						if (entry.kind === "replace") {
+							builder.add(
+								entry.from,
+								entry.to,
+								Decoration.replace({
+									widget: new BareURLWidget(
+										entry.repo,
+										entry.num,
+										entry.url
+									),
+								})
+							);
+						} else {
+							if (seenWidgetPos.has(entry.pos)) continue;
+							seenWidgetPos.add(entry.pos);
+							builder.add(
+								entry.pos,
+								entry.pos,
+								Decoration.widget({
+									widget: new PRStatusWidget(entry.key),
+									side: 1,
+								})
+							);
+						}
 					}
 
 					return builder.finish();
